@@ -1,0 +1,29 @@
+From 34f04002adb1701b181838d17fcb4bb56ab1cfe4 Mon Sep 17 00:00:00 2001
+From: Matt Fleming <matt.fleming@intel.com>
+Date: Wed, 28 May 2014 17:02:26 +0100
+Subject: [PATCH 3/5] chipsec_main.py: Remove absolute reference to python
+ executable
+
+The canonical way to use shebang for python scripts is to use env(1)
+which will automatically find the python interpreter in the user's
+$PATH, rather than hard-coding an absolute path that may not exist for
+all systems.
+
+Signed-off-by: Matt Fleming <matt.fleming@intel.com>
+---
+ source/tool/chipsec_main.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/source/tool/chipsec_main.py b/source/tool/chipsec_main.py
+index 30781bc..72a06b5 100644
+--- a/source/tool/chipsec_main.py
++++ b/source/tool/chipsec_main.py
+@@ -1,4 +1,4 @@
+-#!/usr/local/bin/python
++#!/usr/bin/env python
+ #CHIPSEC: Platform Security Assessment Framework
+ #Copyright (c) 2010-2014, Intel Corporation
+ # 
+-- 
+1.9.0
+
