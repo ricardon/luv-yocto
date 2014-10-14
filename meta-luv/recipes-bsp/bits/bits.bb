@@ -27,6 +27,7 @@ SRC_URI = "http://biosbits.org/downloads/${BPN}-${PV}.zip  \
            file://luv-test-bits \
            file://luv-parser-bits \
            file://0001-only-output-to-log.patch;apply=no \
+           file://0002-Add-luv-python-util.patch \
           "
 
 SRC_URI[md5sum] = "173782311c854fca53bc390e2307472a"
