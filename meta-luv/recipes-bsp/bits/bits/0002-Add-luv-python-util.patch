@@ -1,0 +1,195 @@
+diff --git a/python/luv.py b/python/luv.py
+new file mode 100644
+index 0000000..2ae3fc8
+--- /dev/null
++++ b/boot/python/luv.py
+@@ -0,0 +1,189 @@
++#------------------------------------------------------------------------------
++#
++# Copyright (c) 2014, Intel Corporation
++# All rights reserved.
++#
++# Redistribution and use in source and binary forms, with or without
++# modification, are permitted provided that the following conditions are met:
++#
++#     * Redistributions of source code must retain the above copyright notice,
++#       this list of conditions and the following disclaimer.
++#     * Redistributions in binary form must reproduce the above copyright notice,
++#       this list of conditions and the following disclaimer in the documentation
++#       and/or other materials provided with the distribution.
++#     * Neither the name of Intel Corporation nor the names of its contributors
++#       may be used to endorse or promote products derived from this software
++#       without specific prior written permission.
++#
++# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
++# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
++# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
++# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
++# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
++# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
++# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
++# ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
++# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++#
++#------------------------------------------------------------------------------
++
++"""Utility functions to integrate BITS into LuvOS"""
++
++import bits.pyfs
++
++_luv_suites = {}
++
++def parse_config_file():
++    try:
++        # change in real implementation
++        f = open('/luv.config')
++        for ln in f.readlines():
++            # remove any leading spaces
++            ln = ln.lstrip()
++            # remove any trailing spaces and \n
++            ln = ln.rstrip()
++            # skip empty and commented lines
++            if len(ln) < 1 or ln[0] == '#':
++                continue
++            r = add_test_suite(ln)
++            if r is False:
++                 print "Malformed line in config file. Skipping..."
++        f.close()
++    except IOError:
++        print "LUV: Configuration file is missing!"
++
++def add_test_suite( line ):
++    # we only parse the first three fields, everything else is ignored
++    # this schema allows future extensions for more parameters
++    words = line.split(":")
++    # we need three non empty fields
++    if len(words) < 3 or words[0] is '' or words[1] is '':
++        return False
++    # truncate long test suite names
++    name = (words[1][:48] + '..') if len(words[1]) > 50 else words[1]
++    _luv_suites[words[0]] = name, words[2]
++    return True
++
++def get_selections():
++    """Utility function to display the current test suite selections"""
++    text = ""
++    text += "Selected |  Test Suite:\n"
++    for k,v in _luv_suites.items():
++	 if is_selected(k) is True:
++             text += "   Yes   | "+v[0]+"\n"
++         else:
++             text += "   No    | "+v[0]+"\n"
++    return text
++
++def make_luv_menu():
++    """Create a grub configuration file based on the luv config file"""
++    # start by deleting the existing file if any
++    # need to prepend the filename with / when looking up
++    previous = bits.pyfs._lookup('/luv.cfg')
++    if previous is not None:
++          return
++    parse_config_file()
++    menu = ""
++    for k,v in _luv_suites.items():
++        menu += make_menu_entry(k, v[0], v[1])
++
++    bits.pyfs.add_static("luv.cfg", menu)
++
++def make_menu_entry( key, name, state ):
++    text = "menuentry \""+name+"\" {\n"
++    text += "   py 'import luv; luv.make_submenu(\""+key+"\")'\n"
++    text += "   configfile (python)/luv-"+key+".cfg\n}\n"
++    return text;
++
++def is_selected(key):
++    v = _luv_suites.get(key, None)
++    assert v is not None
++    name, state = v
++    import re
++    expr = re.compile("yes", re.IGNORECASE)
++    if re.search(expr, state):
++        return True
++    else:
++        return False
++
++def make_submenu( key ):
++    """Create a menu to change selection state of a given test suite"""
++    # need to prepend the file with / when looking up
++    filename = "luv-"+key+".cfg"
++    previous = bits.pyfs._lookup("/"+filename)
++    if previous is not None:
++        bits.pyfs.pyfs_del(filename)
++    text = "menuentry \""
++    if is_selected(key) is True:
++        text += "Unselect\" {\n"
++        text += "   py 'import luv; luv.select_test_suite(\""+key+"\", False)'\n}\n"
++    else:
++        text += "Select\" {\n"
++        text += "   py 'import luv; luv.select_test_suite(\""+key+"\", True)'\n}\n"
++    bits.pyfs.add_static(filename, text)
++
++def select_test_suite( key, selected ):
++    v = _luv_suites.get(key, None)
++    assert v is not None
++    name, state = v
++    if selected is True:
++        state = "yes"
++    else:
++        state = "no"
++    _luv_suites[key] = name, state
++
++def update_config_file():
++    """Update the configuration file based on the user selections"""
++    # change in real implementation
++    f = open('/luv.config')
++    text = ""
++    for ln in f.readlines():
++        # copy commented lines as-is
++        if len(ln) < 1 or ln[0] == '#':
++            text += ln
++            continue
++        for k,v in _luv_suites.items():
++            if k in ln:
++                words = ln.split(":")
++                # we checked the file for errors at
++                # parse_config_file(). Thus, we can safely
++                # assume that len(words)>=2 holds
++                if is_selected(k):
++                    newline = words[0]+":"+words[1]+":yes\n"
++                else:
++                    newline = words[0]+":"+words[1]+":no\n"
++                text += newline
++    f.close()
++    return text;
++
++def write_config_file():
++    import bits
++    f = file('/luv.config')
++    updated = update_config_file()
++    data, blocks = bits.file_data_and_disk_blocks(f)
++    size = len(updated)
++    bytes_written = 0
++    for sector, offset, length in blocks:
++        chunk = updated[bytes_written:bytes_written+length]
++        if chunk != data[bytes_written:bytes_written+length]:
++            bits.disk_write(f, sector, offset, updated[bytes_written:bytes_written+length])
++        bytes_written += length
++
++def skip_bits():
++    """Check luv.config to determine if BITS needs to be skipped"""
++    skip = "true"
++    try:
++        fh = open('/luv.config')
++        for ln in fh.readlines():
++            import re
++            if re.search("bits", ln):
++                expr = re.compile("yes", re.IGNORECASE)
++                if re.search(expr, ln):
++                    skip = "false"
++        import os
++        os.environ["skip_bits"] = skip
++    except IOError:    #in case there is no luv.config
++        import os
++        os.environ["skip_bits"] = skip
++
