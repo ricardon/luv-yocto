@@ -48,6 +48,8 @@ if [ $? -eq 0 ]; then
     mount /dev/disk/by-uuid/${LUV_EFI_UUID} ${LUV_EFI}
 fi
 
+
+
 psplash_write "MSG Running tests..."
 
 luv_version=$(cut -d\\ -f1 /etc/issue)
@@ -66,9 +68,12 @@ EOF
 # testsuite-specific output into the log schema defined in
 # luv-test-parser.
 #
+# Test suites will only be run is selected as "yes" in ${LUV_CONFIG}
+#
 LUV_TESTS_DIR=/etc/luv/tests/
 LUV_PARSER_DIR=/etc/luv/parsers/
 LUV_LOG_DIR=/var/log/luv/
+LUV_CONFIG=luv.config
 
 mkdir -p ${LUV_LOG_DIR}
 
@@ -87,6 +92,13 @@ Test results summary:
 
 EOF
 
+# if config file is missing, abort all the tests
+if ! [ -f "${LUV_EFI}/${LUV_CONFIG}" ]; then
+    echo "LUV configuration file is missing. Aborting..."| \
+    tee -a /tmp/luv.results ${LUV_SAVE_RESULTS_DIR}/luv.results
+    exit 1
+fi
+
 runner_list=`ls -A ${LUV_TESTS_DIR}`
 
 progress_step="$((100/$(echo $runner_list | wc -w)))"
@@ -94,6 +106,10 @@ for r in $runner_list; do
     runner="${LUV_TESTS_DIR}$r"
 
     [ -f "$runner" ] || continue
+
+    # check the config file to see if we need to run the suite
+    grep "$r" ${LUV_EFI}/${LUV_CONFIG} | grep -iq yes
+    [ $? -eq 0 ] || continue
 
     psplash_write "PROGRESS $progress_step"
     psplash_write "MSG Running $r"
