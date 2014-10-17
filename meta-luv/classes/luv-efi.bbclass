@@ -30,6 +30,8 @@ efi_populate() {
     install -m 0644 ${GRUBCFG} ${DEST}${EFIDIR}
 
     install -m 0644 ${WORKDIR}/${SPLASH_IMAGE} ${DEST}${EFIDIR}
+
+    install -m 0644 ${WORKDIR}/${LUV_CONFIG} ${DEST}
 }
 
 efi_iso_populate() {
