@@ -13,12 +13,14 @@ MACHINE_FEATURES += "efi"
 APPEND = "crashkernel=256M console=ttyS0,115200 console=ttyPCH0,115200"
 
 SPLASH_IMAGE = "blue-luv.jpg"
+LUV_CONFIG = "luv.config"
 
 GRUB_TIMEOUT = "2"
 
 inherit bootimg
 
-SRC_URI = "file://blue-luv.jpg"
+SRC_URI = "file://blue-luv.jpg \
+           file://luv.config "
 
 build_img() {
     IMG="${DEPLOY_DIR_IMAGE}/${PN}.img"
