@@ -1,0 +1,18 @@
+diff --git a/cfg/toplevel.cfg b/cfg/toplevel.cfg
+index b74f2a4..e829065 100644
+--- a/boot/cfg/toplevel.cfg
++++ b/boot/cfg/toplevel.cfg
+@@ -28,6 +28,13 @@
+ #
+ #------------------------------------------------------------------------------
+ 
++py 'import sys; sys.path = ["/boot/python", "/boot/python/lib"]; del sys'
++py 'import luv; luv.skip_bits()'
++if $skip_bits ; then
++    exit
++fi
++py 'del luv'
++
+ if [ -e /boot/cfg/init.cfg ]; then source /boot/cfg/init.cfg; fi
+ 
+ menuentry "Test Menu" {
