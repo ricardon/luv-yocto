@@ -44,7 +44,7 @@ awk '
 {
 	if (!b) {
 		b = 1;
-		printf ("    [-] %s\n", testsuite);
+		printf ("    [-] %s\r\n", testsuite);
 		fflush("");
 	}
 
@@ -74,11 +74,11 @@ awk '
 		#
 		# Passes indicate everything is fine.
 		if (fails > 0)
-			printf("%d failures!\n", fails);
+			printf("%d failures!\r\n", fails);
 		else if ((aborts > 0 || skips > 0) && !passes)
-			printf("skipped\n");
+			printf("skipped\r\n");
 		else
-			printf("passed\n");
+			printf("passed\r\n");
 		fflush("");
 	} else if (tag == "INFO") {
 		# Do nothing for now.
