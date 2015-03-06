@@ -21,7 +21,7 @@ DEPENDS_${PN} = "openssl"
 inherit deploy
 
 
-SRC_URI = "http://www.codon.org.uk/~mjg59/shim-signed/shim-signed.tgz"
+SRC_URI = "http://www.codon.org.uk/~mjg59/shim-signed/shim-signed-0.2.tgz"
 
 
 SRC_URI[md5sum] = "879108b45e7d1e6794673af29b27517b"
