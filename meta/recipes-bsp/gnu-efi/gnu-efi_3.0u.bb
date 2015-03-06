@@ -13,6 +13,8 @@ SRC_URI[sha256sum] = "3c0d450d5829204ca05dcb3b2aae772e52c379b7c7e09146759c631560
 
 COMPATIBLE_HOST = "(x86_64.*|i.86.*)-linux"
 
+BBCLASSEXTEND = "native"
+
 S = "${WORKDIR}/gnu-efi-3.0"
 
 def gnu_efi_arch(d):
