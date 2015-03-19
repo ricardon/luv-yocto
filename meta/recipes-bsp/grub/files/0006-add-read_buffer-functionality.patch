@@ -1,0 +1,325 @@
+From 4f22f978e248be64fe376c84572ce3407eb70b6e Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Thu, 19 Mar 2015 11:59:12 -0700
+Subject: [PATCH 06/16] add read_buffer functionality
+
+squash
+
+squash
+---
+ grub-core/loader/efi/chainloader.c | 269 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 269 insertions(+)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index d4e2a7a..4d26b43 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -51,12 +51,72 @@ static grub_efi_char16_t *cmdline;
+     { 0xab, 0xb6, 0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23 } \
+   }
+ 
++
++//
++// PE32+ Machine type for EFI images
++//
++#define IMAGE_FILE_MACHINE_I386            0x014c
++#define IMAGE_FILE_MACHINE_IA64            0x0200
++#define IMAGE_FILE_MACHINE_EBC             0x0EBC
++#define IMAGE_FILE_MACHINE_X64             0x8664
++#define IMAGE_FILE_MACHINE_ARMTHUMB_MIXED  0x01c2
++#define IMAGE_FILE_MACHINE_ARM64	   0xaa64
++
++
+ ///
+ /// Length of ShortName.
+ ///
+ #define EFI_IMAGE_SIZEOF_SHORT_NAME 8
+ 
+ #define EFI_IMAGE_NUMBER_OF_DIRECTORY_ENTRIES 16
++
++#define EFI_IMAGE_DOS_SIGNATURE     SIGNATURE_16('M', 'Z')
++#define EFI_IMAGE_NT_SIGNATURE      SIGNATURE_32('P', 'E', '\0', '\0')
++
++//
++// Characteristics
++//
++#define EFI_IMAGE_FILE_RELOCS_STRIPPED      (1 << 0)     ///< 0x0001  Relocation info stripped from file.
++#define EFI_IMAGE_FILE_EXECUTABLE_IMAGE     (1 << 1)     ///< 0x0002  File is executable  (i.e. no unresolved externel references).
++#define EFI_IMAGE_FILE_LINE_NUMS_STRIPPED   (1 << 2)     ///< 0x0004  Line nunbers stripped from file.
++#define EFI_IMAGE_FILE_LOCAL_SYMS_STRIPPED  (1 << 3)     ///< 0x0008  Local symbols stripped from file.
++#define EFI_IMAGE_FILE_BYTES_REVERSED_LO    (1 << 7)     ///< 0x0080  Bytes of machine word are reversed.
++#define EFI_IMAGE_FILE_32BIT_MACHINE        (1 << 8)     ///< 0x0100  32 bit word machine.
++#define EFI_IMAGE_FILE_DEBUG_STRIPPED       (1 << 9)     ///< 0x0200  Debugging info stripped from file in .DBG file.
++#define EFI_IMAGE_FILE_SYSTEM               (1 << 12)    ///< 0x1000  System File.
++#define EFI_IMAGE_FILE_DLL                  (1 << 13)    ///< 0x2000  File is a DLL.
++#define EFI_IMAGE_FILE_BYTES_REVERSED_HI    (1 << 15)    ///< 0x8000  Bytes of machine word are reversed.
++
++//
++// Directory Entries
++//
++#define EFI_IMAGE_DIRECTORY_ENTRY_EXPORT      0
++#define EFI_IMAGE_DIRECTORY_ENTRY_IMPORT      1
++#define EFI_IMAGE_DIRECTORY_ENTRY_RESOURCE    2
++#define EFI_IMAGE_DIRECTORY_ENTRY_EXCEPTION   3
++#define EFI_IMAGE_DIRECTORY_ENTRY_SECURITY    4
++#define EFI_IMAGE_DIRECTORY_ENTRY_BASERELOC   5
++#define EFI_IMAGE_DIRECTORY_ENTRY_DEBUG       6
++#define EFI_IMAGE_DIRECTORY_ENTRY_COPYRIGHT   7
++#define EFI_IMAGE_DIRECTORY_ENTRY_GLOBALPTR   8
++#define EFI_IMAGE_DIRECTORY_ENTRY_TLS         9
++#define EFI_IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG 10
++
++#define EFI_IMAGE_NUMBER_OF_DIRECTORY_ENTRIES 16
++///
++/// @attention
++/// EFI_IMAGE_NT_OPTIONAL_HDR64_MAGIC means PE32+ and 
++/// EFI_IMAGE_OPTIONAL_HEADER64 must be used. The data structures only vary
++/// after NT additional fields.
++///
++#define EFI_IMAGE_NT_OPTIONAL_HDR64_MAGIC 0x20b
++///
++/// @attention
++/// EFI_IMAGE_NT_OPTIONAL_HDR32_MAGIC means PE32 and 
++/// EFI_IMAGE_OPTIONAL_HEADER32 must be used. The data structures only vary
++/// after NT additional fields.
++///
++#define EFI_IMAGE_NT_OPTIONAL_HDR32_MAGIC 0x10b
+ ///
+ /// COFF File Header (Object and Image).
+ ///
+@@ -199,6 +259,32 @@ typedef struct {
+ } EFI_TE_IMAGE_HEADER;
+ 
+ ///
++/// PE images can start with an optional DOS header, so if an image is run
++/// under DOS it can print an error message.
++///
++typedef struct {
++  grub_efi_uint16_t  e_magic;    ///< Magic number.
++  grub_efi_uint16_t  e_cblp;     ///< Bytes on last page of file.
++  grub_efi_uint16_t  e_cp;       ///< Pages in file.
++  grub_efi_uint16_t  e_crlc;     ///< Relocations.
++  grub_efi_uint16_t  e_cparhdr;  ///< Size of header in paragraphs.
++  grub_efi_uint16_t  e_minalloc; ///< Minimum extra paragraphs needed.
++  grub_efi_uint16_t  e_maxalloc; ///< Maximum extra paragraphs needed.
++  grub_efi_uint16_t  e_ss;       ///< Initial (relative) SS value.
++  grub_efi_uint16_t  e_sp;       ///< Initial SP value.
++  grub_efi_uint16_t  e_csum;     ///< Checksum.
++  grub_efi_uint16_t  e_ip;       ///< Initial IP value.
++  grub_efi_uint16_t  e_cs;       ///< Initial (relative) CS value.
++  grub_efi_uint16_t  e_lfarlc;   ///< File address of relocation table.
++  grub_efi_uint16_t  e_ovno;     ///< Overlay number.
++  grub_efi_uint16_t  e_res[4];   ///< Reserved words.
++  grub_efi_uint16_t  e_oemid;    ///< OEM identifier (for e_oeminfo).
++  grub_efi_uint16_t  e_oeminfo;  ///< OEM information; e_oemid specific.
++  grub_efi_uint16_t  e_res2[10]; ///< Reserved words.
++  grub_efi_uint32_t  e_lfanew;   ///< File address of new exe header.
++} EFI_IMAGE_DOS_HEADER;
++
++///
+ /// Union of PE32, PE32+, and TE headers.
+ ///
+ typedef union {
+@@ -263,6 +349,185 @@ typedef struct grub_efi_shim_lock grub_efi_shim_lock_t;
+ 
+ static grub_efi_guid_t shim_protocol_guid = GRUB_EFI_SHIM_PROTOCOL_GUID;
+ 
++/* here's a chart:
++ *		i686	x86_64	aarch64
++ *  64-on-64:	nyet	yes	yes
++ *  64-on-32:	nyet	yes	nyet
++ *  32-on-32:	yes	yes	no
++ */
++static int
++allow_64_bit(void)
++{
++#if defined(__x86_64__) || defined(__aarch64__)
++	return 1;
++#elif defined(__i386__) || defined(__i686__)
++	/* Right now blindly assuming the kernel will correctly detect this
++	 * and /halt the system/ if you're not really on a 64-bit cpu */
++	if (in_protocol)
++		return 1;
++	return 0;
++#else /* assuming everything else is 32-bit... */
++	return 0;
++#endif
++}
++
++static int
++image_is_64_bit(EFI_IMAGE_OPTIONAL_HEADER_UNION *PEHdr)
++{
++	/* .Magic is the same offset in all cases */
++	if (PEHdr->Pe32Plus.OptionalHeader.Magic
++			== EFI_IMAGE_NT_OPTIONAL_HDR64_MAGIC)
++		return 1;
++	return 0;
++}
++
++static int
++image_is_loadable(EFI_IMAGE_OPTIONAL_HEADER_UNION *PEHdr)
++{
++	/* If the machine type doesn't match the binary, bail, unless
++	 * we're in an allowed 64-on-32 scenario */
++	if (PEHdr->Pe32.FileHeader.Machine != machine_type) {
++		if (!(machine_type == IMAGE_FILE_MACHINE_I386 &&
++		      PEHdr->Pe32.FileHeader.Machine == IMAGE_FILE_MACHINE_X64 &&
++		      allow_64_bit())) {
++			return 0;
++		}
++	}
++
++	/* If it's not a header type we recognize at all, bail */
++	switch (PEHdr->Pe32Plus.OptionalHeader.Magic) {
++	case EFI_IMAGE_NT_OPTIONAL_HDR64_MAGIC:
++	case EFI_IMAGE_NT_OPTIONAL_HDR32_MAGIC:
++		break;
++	default:
++		return 0;
++	}
++
++	/* and now just check for general 64-vs-32 compatibility */
++	if (image_is_64_bit(PEHdr)) {
++		if (allow_64_bit())
++			return 1;
++	} else {
++		if (allow_32_bit())
++			return 1;
++	}
++	return 0;
++}
++/*
++ * Read the binary header and grab appropriate information from it
++ */
++static grub_efi_status_t read_header(void *data, unsigned int datasize,
++			      PE_COFF_LOADER_IMAGE_CONTEXT *context)
++{
++	EFI_IMAGE_DOS_HEADER *DosHdr = data;
++	EFI_IMAGE_OPTIONAL_HEADER_UNION *PEHdr = data;
++	unsigned long HeaderWithoutDataDir, SectionHeaderOffset, OptHeaderSize;
++
++	if (datasize < sizeof (PEHdr->Pe32)) {
++		grub_printf(L"Invalid image\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	if (DosHdr->e_magic == EFI_IMAGE_DOS_SIGNATURE)
++		PEHdr = (EFI_IMAGE_OPTIONAL_HEADER_UNION *)((char *)data + DosHdr->e_lfanew);
++
++	if (!image_is_loadable(PEHdr)) {
++		grub_printf(L"Platform does not support this image\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	if (image_is_64_bit(PEHdr)) {
++		context->NumberOfRvaAndSizes = PEHdr->Pe32Plus.OptionalHeader.NumberOfRvaAndSizes;
++		context->SizeOfHeaders = PEHdr->Pe32Plus.OptionalHeader.SizeOfHeaders;
++		context->ImageSize = PEHdr->Pe32Plus.OptionalHeader.SizeOfImage;
++		OptHeaderSize = sizeof(EFI_IMAGE_OPTIONAL_HEADER64);
++	} else {
++		context->NumberOfRvaAndSizes = PEHdr->Pe32.OptionalHeader.NumberOfRvaAndSizes;
++		context->SizeOfHeaders = PEHdr->Pe32.OptionalHeader.SizeOfHeaders;
++		context->ImageSize = (UINT64)PEHdr->Pe32.OptionalHeader.SizeOfImage;
++		OptHeaderSize = sizeof(EFI_IMAGE_OPTIONAL_HEADER32);
++	}
++
++	context->NumberOfSections = PEHdr->Pe32.FileHeader.NumberOfSections;
++
++	if (EFI_IMAGE_NUMBER_OF_DIRECTORY_ENTRIES < context->NumberOfRvaAndSizes) {
++		grub_printf(L"Image header too small\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	HeaderWithoutDataDir = OptHeaderSize
++			- sizeof (EFI_IMAGE_DATA_DIRECTORY) * EFI_IMAGE_NUMBER_OF_DIRECTORY_ENTRIES;
++	if (((grub_efi_uint32_t)PEHdr->Pe32.FileHeader.SizeOfOptionalHeader - HeaderWithoutDataDir) !=
++			context->NumberOfRvaAndSizes * sizeof (EFI_IMAGE_DATA_DIRECTORY)) {
++		grub_printf(L"Image header overflows data directory\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	SectionHeaderOffset = DosHdr->e_lfanew
++				+ sizeof (UINT32)
++				+ sizeof (EFI_IMAGE_FILE_HEADER)
++				+ PEHdr->Pe32.FileHeader.SizeOfOptionalHeader;
++	if (((grub_efi_uint32_t)context->ImageSize - SectionHeaderOffset) / EFI_IMAGE_SIZEOF_SECTION_HEADER
++			<= context->NumberOfSections) {
++		grub_printf(L"Image sections overflow image size\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	if ((context->SizeOfHeaders - SectionHeaderOffset) / EFI_IMAGE_SIZEOF_SECTION_HEADER
++			< (grub_efi_uint32_t)context->NumberOfSections) {
++		grub_printf(L"Image sections overflow section headers\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	if ((((grub_efi_uint8_t *)PEHdr - (grub_efi_uint8_t *)data) + sizeof(EFI_IMAGE_OPTIONAL_HEADER_UNION)) > datasize) {
++		grub_printf(L"Invalid image\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	if (PEHdr->Te.Signature != EFI_IMAGE_NT_SIGNATURE) {
++		grub_printf(L"Unsupported image type\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	if (PEHdr->Pe32.FileHeader.Characteristics & EFI_IMAGE_FILE_RELOCS_STRIPPED) {
++		grub_printf(L"Unsupported image - Relocations have been stripped\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	context->PEHdr = PEHdr;
++
++	if (image_is_64_bit(PEHdr)) {
++		context->ImageAddress = PEHdr->Pe32Plus.OptionalHeader.ImageBase;
++		context->EntryPoint = PEHdr->Pe32Plus.OptionalHeader.AddressOfEntryPoint;
++		context->RelocDir = &PEHdr->Pe32Plus.OptionalHeader.DataDirectory[EFI_IMAGE_DIRECTORY_ENTRY_BASERELOC];
++		context->SecDir = &PEHdr->Pe32Plus.OptionalHeader.DataDirectory[EFI_IMAGE_DIRECTORY_ENTRY_SECURITY];
++	} else {
++		context->ImageAddress = PEHdr->Pe32.OptionalHeader.ImageBase;
++		context->EntryPoint = PEHdr->Pe32.OptionalHeader.AddressOfEntryPoint;
++		context->RelocDir = &PEHdr->Pe32.OptionalHeader.DataDirectory[EFI_IMAGE_DIRECTORY_ENTRY_BASERELOC];
++		context->SecDir = &PEHdr->Pe32.OptionalHeader.DataDirectory[EFI_IMAGE_DIRECTORY_ENTRY_SECURITY];
++	}
++
++	context->FirstSection = (EFI_IMAGE_SECTION_HEADER *)((char *)PEHdr + PEHdr->Pe32.FileHeader.SizeOfOptionalHeader + sizeof(UINT32) + sizeof(EFI_IMAGE_FILE_HEADER));
++
++	if (context->ImageSize < context->SizeOfHeaders) {
++		grub_printf(L"Invalid image\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	if ((unsigned long)((UINT8 *)context->SecDir - (UINT8 *)data) >
++	    (datasize - sizeof(EFI_IMAGE_DATA_DIRECTORY))) {
++		grub_printf(L"Invalid image\n");
++		return GRUB_EFI_UNSUPPORTED;
++	}
++
++	if (context->SecDir->VirtualAddress >= datasize) {
++		grub_printf(L"Malformed security header\n");
++		return GRUB_EFI_INVALID_PARAMETER;
++	}
++	return GRUB_EFI_SUCCESS;
++}
++
+ static grub_err_t
+ grub_chainloader_unload (void)
+ {
+@@ -517,9 +782,13 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 	grub_error (GRUB_ERR_BAD_OS, "cannot load image [%d]", status);
+ 
+ 	grub_efi_shim_lock_t *c;
++	PE_COFF_LOADER_IMAGE_CONTEXT context;
+ 
+         c = grub_efi_locate_protocol (&shim_protocol_guid, 0);
+         grub_printf ("protocol find [0x%p]", (void *)c);
++
++        status = read_header(address,size, *context);
++        grub_printf ("read header status [%d]", status);
+       }
+ 
+       goto fail;
+-- 
+1.9.1
+

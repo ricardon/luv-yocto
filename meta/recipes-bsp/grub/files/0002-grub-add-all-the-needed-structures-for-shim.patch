@@ -1,0 +1,241 @@
+From 90087eaa45f41902f62c36413bcdf64488cb1b46 Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Wed, 18 Mar 2015 12:58:03 -0700
+Subject: [PATCH 02/16] grub: add all the needed structures for shim
+
+squash
+---
+ grub-core/loader/efi/chainloader.c | 217 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 217 insertions(+)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 3d763f4..456ed3b 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -46,6 +46,223 @@ static grub_efi_device_path_t *file_path;
+ static grub_efi_handle_t image_handle;
+ static grub_efi_char16_t *cmdline;
+ 
++#define GRUB_EFI_SHIM_PROTOCOL_GUID	\
++  { 0x605dab50, 0xe046, 0x4300, \
++    { 0xab, 0xb6, 0x3d, 0xd8, 0x10, 0xdd, 0x8b, 0x23 } \
++  }
++
++///
++/// Length of ShortName.
++///
++#define EFI_IMAGE_SIZEOF_SHORT_NAME 8
++
++#define EFI_IMAGE_NUMBER_OF_DIRECTORY_ENTRIES 16
++///
++/// COFF File Header (Object and Image).
++///
++typedef struct {
++  grub_efi_uint16_t  Machine;
++  grub_efi_uint16_t  NumberOfSections;
++  grub_efi_uint32_t  TimeDateStamp;
++  grub_efi_uint32_t  PointerToSymbolTable;
++  grub_efi_uint32_t  NumberOfSymbols;
++  grub_efi_uint16_t  SizeOfOptionalHeader;
++  grub_efi_uint16_t  Characteristics;
++} EFI_IMAGE_FILE_HEADER;
++
++///
++/// Header Data Directories.
++///
++typedef struct {
++  grub_efi_uint32_t  VirtualAddress;
++  grub_efi_uint32_t  Size;
++} EFI_IMAGE_DATA_DIRECTORY;
++
++///
++/// Optional Header Standard Fields for PE32.
++///
++typedef struct {
++  ///
++  /// Standard fields.
++  ///
++  grub_efi_uint16_t                    Magic;
++  grub_efi_uint8_t                     MajorLinkerVersion;
++  grub_efi_uint8_t                     MinorLinkerVersion;
++  grub_efi_uint32_t                    SizeOfCode;
++  grub_efi_uint32_t                    SizeOfInitializedData;
++  grub_efi_uint32_t                    SizeOfUninitializedData;
++  grub_efi_uint32_t                    AddressOfEntryPoint;
++  grub_efi_uint32_t                    BaseOfCode;
++  grub_efi_uint32_t                    BaseOfData;  ///< PE32 contains this additional field, which is absent in PE32+.
++  ///
++  /// Optional Header Windows-Specific Fields.
++  ///
++  grub_efi_uint32_t                    ImageBase;
++  grub_efi_uint32_t                    SectionAlignment;
++  grub_efi_uint32_t                    FileAlignment;
++  grub_efi_uint16_t                    MajorOperatingSystemVersion;
++  grub_efi_uint16_t                    MinorOperatingSystemVersion;
++  grub_efi_uint16_t                    MajorImageVersion;
++  grub_efi_uint16_t                    MinorImageVersion;
++  grub_efi_uint16_t                    MajorSubsystemVersion;
++  grub_efi_uint16_t                    MinorSubsystemVersion;
++  grub_efi_uint32_t                    Win32VersionValue;
++  grub_efi_uint32_t                    SizeOfImage;
++  grub_efi_uint32_t                    SizeOfHeaders;
++  grub_efi_uint32_t                    CheckSum;
++  grub_efi_uint16_t                    Subsystem;
++  grub_efi_uint16_t                    DllCharacteristics;
++  grub_efi_uint32_t                    SizeOfStackReserve;
++  grub_efi_uint32_t                    SizeOfStackCommit;
++  grub_efi_uint32_t                    SizeOfHeapReserve;
++  grub_efi_uint32_t                    SizeOfHeapCommit;
++  grub_efi_uint32_t                    LoaderFlags;
++  grub_efi_uint32_t                    NumberOfRvaAndSizes;
++  EFI_IMAGE_DATA_DIRECTORY  DataDirectory[EFI_IMAGE_NUMBER_OF_DIRECTORY_ENTRIES];
++} EFI_IMAGE_OPTIONAL_HEADER32;
++
++///
++/// Optional Header Standard Fields for PE32+.
++///
++typedef struct {
++  ///
++  /// Standard fields.
++  ///
++  grub_efi_uint16_t                    Magic;
++  grub_efi_uint8_t                     MajorLinkerVersion;
++  grub_efi_uint8_t                     MinorLinkerVersion;
++  grub_efi_uint32_t                    SizeOfCode;
++  grub_efi_uint32_t                    SizeOfInitializedData;
++  grub_efi_uint32_t                    SizeOfUninitializedData;
++  grub_efi_uint32_t                    AddressOfEntryPoint;
++  grub_efi_uint32_t                    BaseOfCode;
++  ///
++  /// Optional Header Windows-Specific Fields.
++  ///
++  grub_efi_uint64_t                    ImageBase;
++  grub_efi_uint32_t                    SectionAlignment;
++  grub_efi_uint32_t                    FileAlignment;
++  grub_efi_uint16_t                    MajorOperatingSystemVersion;
++  grub_efi_uint16_t                    MinorOperatingSystemVersion;
++  grub_efi_uint16_t                    MajorImageVersion;
++  grub_efi_uint16_t                    MinorImageVersion;
++  grub_efi_uint16_t                    MajorSubsystemVersion;
++  grub_efi_uint16_t                    MinorSubsystemVersion;
++  grub_efi_uint32_t                    Win32VersionValue;
++  grub_efi_uint32_t                    SizeOfImage;
++  grub_efi_uint32_t                    SizeOfHeaders;
++  grub_efi_uint32_t                    CheckSum;
++  grub_efi_uint16_t                    Subsystem;
++  grub_efi_uint16_t                    DllCharacteristics;
++  grub_efi_uint64_t                    SizeOfStackReserve;
++  grub_efi_uint64_t                    SizeOfStackCommit;
++  grub_efi_uint64_t                    SizeOfHeapReserve;
++  grub_efi_uint64_t                    SizeOfHeapCommit;
++  grub_efi_uint32_t                    LoaderFlags;
++  grub_efi_uint32_t                    NumberOfRvaAndSizes;
++  EFI_IMAGE_DATA_DIRECTORY  DataDirectory[EFI_IMAGE_NUMBER_OF_DIRECTORY_ENTRIES];
++} EFI_IMAGE_OPTIONAL_HEADER64;
++
++///
++/// @attention
++/// EFI_IMAGE_NT_HEADERS32 is for use ONLY by tools.
++///
++typedef struct {
++  grub_efi_uint32_t                      Signature;
++  EFI_IMAGE_FILE_HEADER       FileHeader;
++  EFI_IMAGE_OPTIONAL_HEADER32 OptionalHeader;
++} EFI_IMAGE_NT_HEADERS32;
++
++///
++/// @attention
++/// EFI_IMAGE_HEADERS64 is for use ONLY by tools.
++///
++typedef struct {
++  grub_efi_uint32_t                      Signature;
++  EFI_IMAGE_FILE_HEADER       FileHeader;
++  EFI_IMAGE_OPTIONAL_HEADER64 OptionalHeader;
++} EFI_IMAGE_NT_HEADERS64;
++
++///
++/// Header format for TE images, defined in the PI Specification, 1.0.
++///
++typedef struct {
++  grub_efi_uint16_t                    Signature;            ///< The signature for TE format = "VZ".
++  grub_efi_uint16_t                    Machine;              ///< From the original file header.
++  grub_efi_uint8_t                     NumberOfSections;     ///< From the original file header.
++  grub_efi_uint8_t                     Subsystem;            ///< From original optional header.
++  grub_efi_uint16_t                    StrippedSize;         ///< Number of bytes we removed from the header.
++  grub_efi_uint32_t                    AddressOfEntryPoint;  ///< Offset to entry point -- from original optional header.
++  grub_efi_uint32_t                    BaseOfCode;           ///< From original image -- required for ITP debug.
++  grub_efi_uint64_t                    ImageBase;            ///< From original file header.
++  EFI_IMAGE_DATA_DIRECTORY  DataDirectory[2];     ///< Only base relocation and debug directory.
++} EFI_TE_IMAGE_HEADER;
++
++///
++/// Union of PE32, PE32+, and TE headers.
++///
++typedef union {
++  EFI_IMAGE_NT_HEADERS32   Pe32;
++  EFI_IMAGE_NT_HEADERS64   Pe32Plus;
++  EFI_TE_IMAGE_HEADER      Te;
++} EFI_IMAGE_OPTIONAL_HEADER_UNION;
++
++///
++/// Section Table. This table immediately follows the optional header.
++///
++typedef struct {
++  grub_efi_uint8_t Name[EFI_IMAGE_SIZEOF_SHORT_NAME];
++  union {
++    grub_efi_uint32_t  PhysicalAddress;
++    grub_efi_uint32_t  VirtualSize;
++  } Misc;
++  grub_efi_uint32_t  VirtualAddress;
++  grub_efi_uint32_t  SizeOfRawData;
++  grub_efi_uint32_t  PointerToRawData;
++  grub_efi_uint32_t  PointerToRelocations;
++  grub_efi_uint32_t  PointerToLinenumbers;
++  grub_efi_uint16_t  NumberOfRelocations;
++  grub_efi_uint16_t  NumberOfLinenumbers;
++  grub_efi_uint32_t  Characteristics;
++} EFI_IMAGE_SECTION_HEADER;
++
++typedef struct {
++	grub_efi_uint64_t ImageAddress;
++	grub_efi_uint64_t ImageSize;
++	grub_efi_uint64_t EntryPoint;
++	grub_efi_uintn_t SizeOfHeaders;
++	grub_efi_uint16_t ImageType;
++	grub_efi_uint16_t NumberOfSections;
++	EFI_IMAGE_SECTION_HEADER *FirstSection;
++	EFI_IMAGE_DATA_DIRECTORY *RelocDir;
++	EFI_IMAGE_DATA_DIRECTORY *SecDir;
++	grub_efi_uint64_t NumberOfRvaAndSizes;
++	EFI_IMAGE_OPTIONAL_HEADER_UNION *PEHdr;
++} PE_COFF_LOADER_IMAGE_CONTEXT;
++
++struct grub_efi_shim_lock
++{
++  grub_efi_status_t
++  (*Verify) (void *buffer,
++	     grub_uint32_t size);
++
++  grub_efi_status_t
++  (*Hash) (grub_int8_t *data,
++	   grub_int32_t datasize,
++	   PE_COFF_LOADER_IMAGE_CONTEXT *context,
++	   grub_uint8_t sha256hash,
++	   grub_uint8_t sha1hash);
++
++  grub_efi_status_t
++  (*Context) (void *data,
++	      grub_uint32_t datasize,
++	      PE_COFF_LOADER_IMAGE_CONTEXT *context);
++};
++
++typedef struct grub_efi_shim_lock grub_efi_shim_lock_t;
++
++static grub_efi_guid_t shim_protocol_guid = GRUB_EFI_SHIM_PROTOCOL_GUID;
++
+ static grub_err_t
+ grub_chainloader_unload (void)
+ {
+-- 
+1.9.1
+

@@ -1,0 +1,152 @@
+From bc565474168619de4e4d5b1fe56d34042b906540 Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Thu, 19 Mar 2015 18:51:05 -0700
+Subject: [PATCH 09/16] copy exec sections
+
+squash
+
+squash
+
+squash
+
+squash
+
+squash
+
+squash
+
+squash
+---
+ grub-core/loader/efi/chainloader.c | 91 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 91 insertions(+)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 899fd0e..74d3b63 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -66,6 +66,8 @@ static grub_efi_char16_t *cmdline;
+ #define EFI_IMAGE_DOS_SIGNATURE     SIGNATURE_16('M', 'Z')
+ #define EFI_IMAGE_NT_SIGNATURE      SIGNATURE_32('P', 'E', '\0', '\0')
+ 
++#define EFI_IMAGE_DIRECTORY_ENTRY_BASERELOC   5
++
+ static const grub_efi_uint16_t machine_type =
+ #if defined(__x86_64__)
+ 	GRUB_PE32_MACHINE_X86_64;
+@@ -258,6 +260,18 @@ image_is_loadable(EFI_IMAGE_OPTIONAL_HEADER_UNION *PEHdr)
+ 	}
+ 	return 0;
+ }
++
++/*
++ * Perform basic bounds checking of the intra-image pointers
++ */
++static grub_efi_uint64_t image_address (grub_efi_uint64_t image, unsigned int size, unsigned int addr)
++{
++	if (addr > size)
++		return 0;
++
++	return image + addr;
++}
++
+ /*
+  * Read the binary header and grab appropriate information from it
+  */
+@@ -627,10 +641,17 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 
+ 	struct grub_shim_lock *c;
+ 	struct grub_shim_pe_coff_loader_image_context context;
++	grub_efi_physical_address_t buffer;
++	grub_efi_uintn_t buff_pages;
++	struct grub_pe32_section_table *Section;
++	unsigned int sect_size;
++	char *base, *end;
++	int i;
+ 
+         c = grub_efi_locate_protocol (&shim_protocol_guid, 0);
+         grub_printf ("PF [0x%p]", (void *)c);
+ 
++        grub_memset(&context, 0, sizeof(context));
+         status = read_header((void *) ((grub_addr_t) address), size, &context);
+         grub_printf ("RH [%ld]", status);
+ 
+@@ -641,6 +662,76 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+         status = c->Verify((void *) ((grub_addr_t) address), size);
+         grub_printf ("VS [%ld]", status);
+ 
++	buff_pages = (((grub_efi_uintn_t) context.ImageSize + ((1 << 12) - 1)) >> 12);
++
++	/* TODO: free theses pages */
++	status = efi_call_4 (b->allocate_pages, GRUB_EFI_ALLOCATE_ANY_PAGES,
++			     GRUB_EFI_LOADER_CODE, buff_pages, &buffer);
++	if (status != GRUB_EFI_SUCCESS)
++	{
++		grub_printf ("Failed to allocate %u pages\n",(unsigned int) pages);
++		grub_error (GRUB_ERR_OUT_OF_MEMORY, N_("out of memory"));
++		goto fail;
++	}
++
++	grub_memcpy((void *) ((grub_efi_physical_address_t) buffer),
++		    (void *) ((grub_addr_t) address), context.SizeOfHeaders);
++
++	/*
++	 * Copy the executable's sections to their desired offsets
++	 */
++	Section = context.FirstSection;
++	for (i = 0; i < context.NumberOfSections; i++, Section++) {
++		if (Section->characteristics & 0x02000000)
++			/* section has EFI_IMAGE_SCN_MEM_DISCARDABLE attr set */
++			continue;
++
++		sect_size = Section->virtual_size;
++
++		if (sect_size > Section->raw_data_size)
++			sect_size = Section->raw_data_size;
++
++		grub_printf("vs[0x%x]\n", Section->virtual_size);
++		grub_printf("rd[0x%x]\n", Section->raw_data_size);
++		grub_printf("is[0x%lx]\n", context.ImageSize);
++		grub_printf("va[0x%x]\n", Section->virtual_address);
++		base = (char *) image_address (buffer, context.ImageSize, Section->virtual_address);
++		end = (char *) image_address (buffer, context.ImageSize, Section->virtual_address + sect_size - 1);
++
++		if (!base) {
++			grub_printf("Invalid section base\n");
++			status = GRUB_EFI_UNSUPPORTED;
++			goto fail;
++		}
++		
++		if (!end) {
++			grub_printf("Invalid section end\n");
++			status = GRUB_EFI_UNSUPPORTED;
++			goto fail;
++		}
++
++		if (Section->virtual_address < context.SizeOfHeaders ||
++				Section->raw_data_offset < context.SizeOfHeaders) {
++			grub_printf("Section is inside image headers\n");
++			status = GRUB_EFI_UNSUPPORTED;
++			goto fail;
++		}
++
++		if (Section->raw_data_size > 0)
++			grub_memcpy((void *)base, (void *) (((grub_addr_t) address) + Section->raw_data_offset), sect_size);
++
++		if (sect_size < Section->virtual_size)
++			grub_memset ((void *)(base + sect_size), 0, Section->virtual_size - sect_size);
++	}
++	
++	if (context.NumberOfRvaAndSizes <= EFI_IMAGE_DIRECTORY_ENTRY_BASERELOC) {
++		grub_printf("Image has no relocation entry\n");
++		efi_call_2 (b->free_pages, buffer, buff_pages);
++		status = GRUB_EFI_UNSUPPORTED;
++		goto fail;
++	}
++
++	grub_printf("I made it here!\n");
+ 	grub_error (GRUB_ERR_BAD_OS, "cannot load image [%d]", status);
+       }
+ 
+-- 
+1.9.1
+

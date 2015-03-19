@@ -1,0 +1,27 @@
+From b8ff213498f7cb4c4d6586150439f1cc6aa4bd40 Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Wed, 18 Mar 2015 11:47:04 -0700
+Subject: [PATCH 01/16] grub: print error status when not being able to load
+ image
+
+Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+---
+ grub-core/loader/efi/chainloader.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 3f3e6e3..3d763f4 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -295,7 +295,7 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+       if (status == GRUB_EFI_OUT_OF_RESOURCES)
+ 	grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of resources");
+       else
+-	grub_error (GRUB_ERR_BAD_OS, "cannot load image");
++	grub_error (GRUB_ERR_BAD_OS, "cannot load image [%d]", status);
+ 
+       goto fail;
+     }
+-- 
+1.9.1
+

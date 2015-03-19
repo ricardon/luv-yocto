@@ -1,0 +1,56 @@
+From 8fd0131e9000c9c1cd4fc567676f4a686180ef5f Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Fri, 20 Mar 2015 19:31:41 -0700
+Subject: [PATCH 14/16] set load options
+
+---
+ grub-core/loader/efi/chainloader.c | 33 ++++++++++++++++++++++++++++++---
+ 1 file changed, 30 insertions(+), 3 deletions(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 9bf64be..d954666 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -909,9 +909,36 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 	parent_li->image_base = (void *)buffer;
+ 	parent_li->image_size = context.ImageSize;
+ 
+-	/* TODO: Pass the load options to the second stage loader */
+-	parent_li->load_options = NULL;
+-	parent_li->load_options_size = 0;
++	  /* parse loade options */
++	  if (argc > 1)
++	    {
++	      int k, len;
++	      grub_efi_char16_t *p16;
++
++	      for (k = 1, len = 0; k < argc; k++)
++		len += grub_strlen (argv[k]) + 1;
++
++	      len *= sizeof (grub_efi_char16_t);
++	      cmdline = p16 = grub_malloc (len);
++	      if (! cmdline)
++		goto fail;
++
++	      for (k = 1; k < argc; k++)
++		{
++		  char *p8;
++
++		  p8 = argv[k];
++		  while (*p8)
++		    *(p16++) = *(p8++);
++
++		  *(p16++) = ' ';
++		}
++	      *(--p16) = 0;
++
++	      parent_li->load_options = cmdline;
++	      parent_li->load_options_size = len;
++	    }
++
+ 
+ 	/* run the image! */
+ 	status = efi_call_2(entry_point, grub_efi_image_handle, grub_efi_system_table);
+-- 
+1.9.1
+

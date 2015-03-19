@@ -1,0 +1,72 @@
+From 7ceb3e37550a9a3fdddf34dfa6722fa264420858 Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Mon, 23 Mar 2015 16:23:11 -0700
+Subject: [PATCH 15/16] replace system ext
+
+---
+ grub-core/loader/efi/chainloader.c | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index d954666..15b33a5 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -525,6 +525,25 @@ static grub_efi_status_t read_header(void *data, unsigned int datasize,
+ 	return GRUB_EFI_SUCCESS;
+ }
+ 
++/* Our own exit function does not need to do anything special */
++static grub_efi_status_t grub_chainloader_exit(grub_efi_handle_t img_handle,
++				   grub_efi_status_t exit_status,
++				   grub_efi_uintn_t exit_data_size,
++				   grub_efi_char16_t *exit_data)
++{
++	grub_printf("grub chainloader exit...\n");
++	/* sanity check the image handle */
++	if (!img_handle)
++		return GRUB_EFI_INVALID_PARAMETER;
++	/* this is really to do something with the exit_data and
++	 * exit_data_size of the signature and avoid build warnings.
++	 * Plus, grub sets both params to zero
++	 */
++	if (!exit_data || exit_data_size)
++		return GRUB_EFI_BAD_BUFFER_SIZE;
++	return exit_status;
++}
++
+ static grub_err_t
+ grub_chainloader_unload (void)
+ {
+@@ -786,6 +805,10 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 	char *base, *end;
+ 	int i;
+ 	grub_efi_loaded_image_t *parent_li, parent_li_bak;
++	grub_efi_status_t  (*system_exit) (grub_efi_handle_t image_handle,
++					   grub_efi_status_t exit_status,
++					   grub_efi_uintn_t exit_data_size,
++					   grub_efi_char16_t *exit_data) __attribute__((noreturn));
+ 
+         c = grub_efi_locate_protocol (&shim_protocol_guid, 0);
+         grub_printf ("PF [0x%p]", (void *)c);
+@@ -939,10 +962,18 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 	      parent_li->load_options_size = len;
+ 	    }
+ 
++	/* replace the boot services exit function, as this will be called
++	 * by grub. The exit function is designed to work in conjunction with
++	 * LoadImage and StartImage and lots of things happen
++	 */
++	system_exit = grub_efi_system_table->boot_services->exit;
++	grub_efi_system_table->boot_services->exit = grub_chainloader_exit;
+ 
+ 	/* run the image! */
+ 	status = efi_call_2(entry_point, grub_efi_image_handle, grub_efi_system_table);
+ 
++	grub_efi_system_table->boot_services->exit = system_exit;
++
+ 	grub_printf("ran image [%ld]\n", status);
+ 
+ 	grub_printf("I made it here!!\n");
+-- 
+1.9.1
+

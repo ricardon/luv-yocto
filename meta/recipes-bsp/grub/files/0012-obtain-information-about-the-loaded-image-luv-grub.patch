@@ -1,0 +1,50 @@
+From 138d5dd647f1d5ac7c2c6872c4b2f7f419afd065 Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Fri, 20 Mar 2015 14:43:29 -0700
+Subject: [PATCH 12/16] obtain information about the loaded image (luv grub)
+
+Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+
+sq
+
+Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+---
+ grub-core/loader/efi/chainloader.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index ac21b40..e57578f 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -785,6 +785,7 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 	unsigned int sect_size;
+ 	char *base, *end;
+ 	int i;
++	grub_efi_loaded_image_t *parent_li;
+ 
+         c = grub_efi_locate_protocol (&shim_protocol_guid, 0);
+         grub_printf ("PF [0x%p]", (void *)c);
+@@ -882,9 +883,18 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 	}
+ 
+ 	entry_point = (void *)image_address(buffer, context.ImageSize, context.EntryPoint);
+-
+-	grub_printf("entry point is[0x%lx]\n", entry_point);
+ 	grub_printf("I made it here!!\n");
++
++	/* borrow data from the current loaded image */
++
++	parent_li = grub_efi_get_loaded_image (grub_efi_image_handle);
++	if (!parent_li)
++	{
++		grub_printf("no loaded image to borrow!");
++		goto fail;
++	}
++
++	/* backup loaded image */
+ 	grub_error (GRUB_ERR_BAD_OS, "cannot load image [%d]", status);
+       }
+ 
+-- 
+1.9.1
+

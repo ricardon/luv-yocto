@@ -1,0 +1,34 @@
+From 6e84ba9f43c5ec845917412def8ba9879430b34f Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Wed, 18 Mar 2015 12:58:36 -0700
+Subject: [PATCH 03/16] grub: try to pull the shim protocol to verify image
+
+Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+---
+ grub-core/loader/efi/chainloader.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 456ed3b..7ed4b5d 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -511,9 +511,15 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+     {
+       if (status == GRUB_EFI_OUT_OF_RESOURCES)
+ 	grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of resources");
+-      else
++      else {
+ 	grub_error (GRUB_ERR_BAD_OS, "cannot load image [%d]", status);
+ 
++	grub_efi_shim_lock_t *c;
++
++        c = grub_efi_locate_protocol (&shim_protocol_guid, 0);
++        grub_error (GRUB_ERR_BAD_OS, "protocol find [0x%x]", c);
++      }
++
+       goto fail;
+     }
+ 
+-- 
+1.9.1
+

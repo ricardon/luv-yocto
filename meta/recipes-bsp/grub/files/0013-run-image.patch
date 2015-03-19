@@ -1,0 +1,74 @@
+From b40fa8c1e27b1d89ee37c636aa4d517f517af482 Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Fri, 20 Mar 2015 17:19:52 -0700
+Subject: [PATCH 13/16] run image!
+
+---
+ grub-core/loader/efi/chainloader.c | 35 +++++++++++++++++++++++++++++++----
+ 1 file changed, 31 insertions(+), 4 deletions(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index e57578f..9bf64be 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -785,7 +785,7 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 	unsigned int sect_size;
+ 	char *base, *end;
+ 	int i;
+-	grub_efi_loaded_image_t *parent_li;
++	grub_efi_loaded_image_t *parent_li, parent_li_bak;
+ 
+         c = grub_efi_locate_protocol (&shim_protocol_guid, 0);
+         grub_printf ("PF [0x%p]", (void *)c);
+@@ -883,10 +883,15 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 	}
+ 
+ 	entry_point = (void *)image_address(buffer, context.ImageSize, context.EntryPoint);
+-	grub_printf("I made it here!!\n");
+ 
+-	/* borrow data from the current loaded image */
++	if (!entry_point) {
++		grub_printf("Invalid entry point\n");
++		// TODO: Free(buffer);
++		status = GRUB_EFI_UNSUPPORTED;
++		goto fail;
++	}
+ 
++	/* borrow data from the current loaded image */
+ 	parent_li = grub_efi_get_loaded_image (grub_efi_image_handle);
+ 	if (!parent_li)
+ 	{
+@@ -894,7 +899,29 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+ 		goto fail;
+ 	}
+ 
+-	/* backup loaded image */
++	/* backup loaded image info */
++	grub_memcpy(&parent_li_bak, parent_li, sizeof(parent_li_bak));
++
++	/*
++	 * grub needs to know its location and size in memory, so fix up
++	 * the loaded image protocol values
++	 */
++	parent_li->image_base = (void *)buffer;
++	parent_li->image_size = context.ImageSize;
++
++	/* TODO: Pass the load options to the second stage loader */
++	parent_li->load_options = NULL;
++	parent_li->load_options_size = 0;
++
++	/* run the image! */
++	status = efi_call_2(entry_point, grub_efi_image_handle, grub_efi_system_table);
++
++	grub_printf("ran image [%ld]\n", status);
++
++	grub_printf("I made it here!!\n");
++	/* restore loaded image */
++	grub_memcpy(parent_li, &parent_li_bak, sizeof(parent_li_bak));
++
+ 	grub_error (GRUB_ERR_BAD_OS, "cannot load image [%d]", status);
+       }
+ 
+-- 
+1.9.1
+

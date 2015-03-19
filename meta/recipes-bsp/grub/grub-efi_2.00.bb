@@ -30,7 +30,22 @@ SRC_URI = "ftp://ftp.gnu.org/gnu/grub/grub-${PV}.tar.gz \
            file://grub-2.00-add-oe-kernel.patch \
            file://grub-efi-fix-with-glibc-2.20.patch \
            file://grub-efinet-tftp.patch \
-           file://0001-debug-load-image.patch \
+           file://0001-grub-print-error-status-when-not-being-able-to-load-.patch \
+           file://0002-grub-add-all-the-needed-structures-for-shim.patch \
+           file://0003-grub-try-to-pull-the-shim-protocol-to-verify-image.patch \
+           file://0004-print-file-size.patch \
+           file://0005-use-grub_printf.patch \
+           file://0006-add-read_buffer-functionality.patch \
+           file://0007-reuse-grub-structures.patch \
+           file://0008-actually-verify-the-image-using-shim-protocol.patch \
+           file://0009-copy-exec-sections.patch \
+           file://0010-add-relocation-code.patch \
+           file://0011-define-entry-point.patch \
+           file://0012-obtain-information-about-the-loaded-image-luv-grub.patch \
+           file://0013-run-image.patch \
+           file://0014-set-load-options.patch \
+           file://0015-replace-system-ext.patch \
+           file://0016-foo.patch \
           "
 SRC_URI[md5sum] = "e927540b6eda8b024fb0391eeaa4091c"
 SRC_URI[sha256sum] = "65b39a0558f8c802209c574f4d02ca263a804e8a564bc6caf1cd0fd3b3cc11e3"

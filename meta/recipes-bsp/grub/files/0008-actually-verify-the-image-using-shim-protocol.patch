@@ -1,0 +1,44 @@
+From b44e70d2fad1bd438030e80a37787140463d0026 Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Thu, 19 Mar 2015 15:09:41 -0700
+Subject: [PATCH 08/16] actually verify the image using shim protocol
+
+---
+ grub-core/loader/efi/chainloader.c | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index f3877fd..899fd0e 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -624,16 +624,24 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+       if (status == GRUB_EFI_OUT_OF_RESOURCES)
+ 	grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of resources");
+       else {
+-	grub_error (GRUB_ERR_BAD_OS, "cannot load image [%d]", status);
+ 
+ 	struct grub_shim_lock *c;
+ 	struct grub_shim_pe_coff_loader_image_context context;
+ 
+         c = grub_efi_locate_protocol (&shim_protocol_guid, 0);
+-        grub_printf ("protocol find [0x%p]", (void *)c);
++        grub_printf ("PF [0x%p]", (void *)c);
+ 
+         status = read_header((void *) ((grub_addr_t) address), size, &context);
+-        grub_printf ("read header status [%ld]", status);
++        grub_printf ("RH [%ld]", status);
++
++	if (!c) {
++		grub_error (GRUB_ERR_BAD_OS, "could not load shim protocol [%d]", status);
++	}
++
++        status = c->Verify((void *) ((grub_addr_t) address), size);
++        grub_printf ("VS [%ld]", status);
++
++	grub_error (GRUB_ERR_BAD_OS, "cannot load image [%d]", status);
+       }
+ 
+       goto fail;
+-- 
+1.9.1
+

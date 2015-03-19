@@ -1,0 +1,26 @@
+From 7ee2f627ce8c8b5c8817c73a38cdfa7af356c038 Mon Sep 17 00:00:00 2001
+From: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+Date: Wed, 18 Mar 2015 18:52:31 -0700
+Subject: [PATCH 04/16] print file size
+
+Signed-off-by: Ricardo Neri <ricardo.neri-calderon@linux.intel.com>
+---
+ grub-core/loader/efi/chainloader.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 7ed4b5d..892da4f 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -504,6 +504,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+       goto fail;
+     }
+ 
++  grub_error (GRUB_ERR_BAD_OS, "file size [0x%x]", size);
++
+   status = efi_call_6 (b->load_image, 0, grub_efi_image_handle, file_path,
+ 			  (void *) ((grub_addr_t) address), size,
+ 			  &image_handle);
+-- 
+1.9.1
+
